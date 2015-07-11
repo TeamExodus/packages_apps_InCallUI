@@ -1553,10 +1553,9 @@ public class InCallPresenter implements CallList.Listener,
         // This method will set the background to default if the color is PhoneAccount.NO_COLOR.
         mThemeColors = getColorsFromCall(CallList.getInstance().getFirstCall());
         //TODO: is the above method need to be called here ?
-        if (mInCallActivity == null) {
+        if (mInCallActivity == null || mThemeColors == null) {
             return;
         }
-
         mInCallActivity.getWindow().setStatusBarColor(mThemeColors.mSecondaryColor);
     }
 
