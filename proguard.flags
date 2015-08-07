@@ -1,3 +1,9 @@
+-optimizationpasses 5
+-dontusemixedcaseclassnames
+-dontskipnonpubliclibraryclasses
+-dontpreverify
+-optimizations !code/simplification/arithmetic,!field/*,!class/merging/*
+
 -keep class com.android.incallui.widget.multiwaveview.* {
   *;
 }
