@@ -33,6 +33,8 @@ import android.provider.ContactsContract.Contacts;
 import java.io.IOException;
 import java.io.InputStream;
 
+import libcore.io.IoUtils;
+
 /**
  * Helper class for loading contacts photo asynchronously.
  */
@@ -116,38 +118,25 @@ public class ContactsAsyncHelper {
                 case EVENT_LOAD_IMAGE:
                     InputStream inputStream = null;
                     try {
-                        try {
-                            inputStream = args.context.getContentResolver()
-                                    .openInputStream(args.displayPhotoUri);
-                        } catch (Exception e) {
-                            Log.e(this, "Error opening photo input stream", e);
-                        }
+                        inputStream = args.context.getContentResolver()
+                                .openInputStream(args.displayPhotoUri);
+                        args.photo = Drawable.createFromStream(inputStream,
+                                args.displayPhotoUri.toString());
+                        // This assumes Drawable coming from contact database is usually
+                        // BitmapDrawable and thus we can have (down)scaled version of it.
+                        args.photoIcon = getPhotoIconWhenAppropriate(args.context, args.photo);
 
-                        if (inputStream != null) {
-                            args.photo = Drawable.createFromStream(inputStream,
-                                    args.displayPhotoUri.toString());
-
-                            // This assumes Drawable coming from contact database is usually
-                            // BitmapDrawable and thus we can have (down)scaled version of it.
-                            args.photoIcon = getPhotoIconWhenAppropriate(args.context, args.photo);
-
-                            Log.d(ContactsAsyncHelper.this, "Loading image: " + msg.arg1 +
-                                    " token: " + msg.what + " image URI: " + args.displayPhotoUri);
-                        } else {
-                            args.photo = null;
-                            args.photoIcon = null;
-                            Log.d(ContactsAsyncHelper.this, "Problem with image: " + msg.arg1 +
-                                    " token: " + msg.what + " image URI: " + args.displayPhotoUri +
-                                    ", using default image.");
-                        }
+                        Log.d(ContactsAsyncHelper.this, "Loading image: " + msg.arg1 +
+                                " token: " + msg.what + " image URI: " + args.displayPhotoUri);
+                    } catch (Exception e) {
+                        args.photo = null;
+                        args.photoIcon = null;
+                        Log.d(ContactsAsyncHelper.this, "Problem with image: " + msg.arg1 +
+                                " token: " + msg.what + " image URI: " + args.displayPhotoUri +
+                                ", using default image.");
+                        Log.e(this, "Error opening photo input stream", e);
                     } finally {
-                        if (inputStream != null) {
-                            try {
-                                inputStream.close();
-                            } catch (IOException e) {
-                                Log.e(this, "Unable to close input stream.", e);
-                            }
-                        }
+                        IoUtils.closeQuietly(inputStream);
                     }
                     break;
                 default:

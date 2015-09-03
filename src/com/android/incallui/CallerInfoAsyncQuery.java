@@ -36,6 +36,8 @@ import com.android.contacts.common.util.TelephonyManagerUtils;
 import java.util.Arrays;
 import java.util.Locale;
 
+import libcore.io.IoUtils;
+
 /**
  * Helper class to make it easier to run asynchronous caller-id lookup queries.
  * @see CallerInfo
@@ -312,9 +314,7 @@ public class CallerInfoAsyncQuery {
                 }
             } finally {
                 // The cursor may have been closed in CallerInfo.getCallerInfo()
-                if (cursor != null && !cursor.isClosed()) {
-                    cursor.close();
-                }
+                IoUtils.closeQuietly(cursor);
             }
         }
     }
