@@ -44,6 +44,8 @@ import com.google.common.base.Preconditions;
 import java.util.HashMap;
 import java.util.Set;
 
+import libcore.io.IoUtils;
+
 /**
  * Class responsible for querying Contact Information for Call objects. Can perform asynchronous
  * requests to the Contact Provider for information as well as respond synchronously for any data
@@ -538,13 +540,14 @@ public class ContactInfoCache implements ContactsAsyncHelper.OnImageLoadComplete
     private static void fillDetailedInfo(Context context,
             final long contactId, ContactCacheEntry cce) {
         final String where = Data.CONTACT_ID + " = " + contactId;
-        Cursor cursor = context.getContentResolver().query(Data.CONTENT_URI,
-                DETAILED_INFO_PROJECTION, where, null, null);
-        if (cursor == null) {
-            return;
-        }
+        Cursor cursor = null;
 
         try {
+            cursor = context.getContentResolver().query(Data.CONTENT_URI,
+                DETAILED_INFO_PROJECTION, where, null, null);
+            if (cursor == null) {
+                return;
+            }
             int mimeTypeColumnIndex = cursor.getColumnIndex(Data.MIMETYPE);
             int orgColumnIndex = cursor.getColumnIndex(Organization.COMPANY);
             int positionColumnIndex = cursor.getColumnIndex(Organization.TITLE);
@@ -572,7 +575,7 @@ public class ContactInfoCache implements ContactsAsyncHelper.OnImageLoadComplete
                 cursor.moveToNext();
             }
         } finally {
-            cursor.close();
+            IoUtils.closeQuietly(cursor);
         }
     }
 

@@ -39,6 +39,8 @@ import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 
 import java.util.Locale;
 
+import libcore.io.IoUtils;
+
 /**
  * Looks up caller information for the given phone number.
  *
@@ -175,91 +177,94 @@ public class CallerInfo {
         Log.v(TAG, "getCallerInfo() based on cursor...");
 
         if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                // TODO: photo_id is always available but not taken
-                // care of here. Maybe we should store it in the
-                // CallerInfo object as well.
+            try {
+                if (cursor.moveToFirst()) {
+                    // TODO: photo_id is always available but not taken
+                    // care of here. Maybe we should store it in the
+                    // CallerInfo object as well.
 
-                int columnIndex;
+                    int columnIndex;
 
-                // Look for the name
-                columnIndex = cursor.getColumnIndex(PhoneLookup.DISPLAY_NAME);
-                if (columnIndex != -1) {
-                    info.name = cursor.getString(columnIndex);
-                }
-
-                // Look for the number
-                columnIndex = cursor.getColumnIndex(PhoneLookup.NUMBER);
-                if (columnIndex != -1) {
-                    info.phoneNumber = cursor.getString(columnIndex);
-                }
-
-                // Look for the normalized number
-                columnIndex = cursor.getColumnIndex(PhoneLookup.NORMALIZED_NUMBER);
-                if (columnIndex != -1) {
-                    info.normalizedNumber = cursor.getString(columnIndex);
-                }
-
-                // Look for the label/type combo
-                columnIndex = cursor.getColumnIndex(PhoneLookup.LABEL);
-                if (columnIndex != -1) {
-                    int typeColumnIndex = cursor.getColumnIndex(PhoneLookup.TYPE);
-                    if (typeColumnIndex != -1) {
-                        info.numberType = cursor.getInt(typeColumnIndex);
-                        info.numberLabel = cursor.getString(columnIndex);
-                        info.phoneLabel = Phone.getTypeLabel(context.getResources(),
-                                info.numberType, info.numberLabel)
-                                .toString();
+                    // Look for the name
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.DISPLAY_NAME);
+                    if (columnIndex != -1) {
+                        info.name = cursor.getString(columnIndex);
                     }
-                }
 
-                // Look for the person_id.
-                columnIndex = getColumnIndexForPersonId(contactRef, cursor);
-                if (columnIndex != -1) {
-                    final long contactId = cursor.getLong(columnIndex);
-                    if (contactId != 0 && !Contacts.isEnterpriseContactId(contactId)) {
-                        info.contactIdOrZero = contactId;
-                        Log.v(TAG, "==> got info.contactIdOrZero: " + info.contactIdOrZero);
+                    // Look for the number
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.NUMBER);
+                    if (columnIndex != -1) {
+                        info.phoneNumber = cursor.getString(columnIndex);
+                    }
 
-                        // cache the lookup key for later use with person_id to create lookup URIs
-                        columnIndex = cursor.getColumnIndex(PhoneLookup.LOOKUP_KEY);
-                        if (columnIndex != -1) {
-                            info.lookupKeyOrNull = cursor.getString(columnIndex);
+                    // Look for the normalized number
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.NORMALIZED_NUMBER);
+                    if (columnIndex != -1) {
+                        info.normalizedNumber = cursor.getString(columnIndex);
+                    }
+
+                    // Look for the label/type combo
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.LABEL);
+                    if (columnIndex != -1) {
+                        int typeColumnIndex = cursor.getColumnIndex(PhoneLookup.TYPE);
+                        if (typeColumnIndex != -1) {
+                            info.numberType = cursor.getInt(typeColumnIndex);
+                            info.numberLabel = cursor.getString(columnIndex);
+                            info.phoneLabel = Phone.getTypeLabel(context.getResources(),
+                                    info.numberType, info.numberLabel)
+                                    .toString();
                         }
                     }
-                } else {
-                    // No valid columnIndex, so we can't look up person_id.
-                    Log.v(TAG, "Couldn't find contactId column for " + contactRef);
-                    // Watch out: this means that anything that depends on
-                    // person_id will be broken (like contact photo lookups in
-                    // the in-call UI, for example.)
-                }
 
-                // Display photo URI.
-                columnIndex = cursor.getColumnIndex(PhoneLookup.PHOTO_URI);
-                if ((columnIndex != -1) && (cursor.getString(columnIndex) != null)) {
-                    info.contactDisplayPhotoUri = Uri.parse(cursor.getString(columnIndex));
-                } else {
-                    info.contactDisplayPhotoUri = null;
-                }
+                    // Look for the person_id.
+                    columnIndex = getColumnIndexForPersonId(contactRef, cursor);
+                    if (columnIndex != -1) {
+                        final long contactId = cursor.getLong(columnIndex);
+                        if (contactId != 0 && !Contacts.isEnterpriseContactId(contactId)) {
+                            info.contactIdOrZero = contactId;
+                            Log.v(TAG, "==> got info.contactIdOrZero: " + info.contactIdOrZero);
 
-                // look for the custom ringtone, create from the string stored
-                // in the database.
-                columnIndex = cursor.getColumnIndex(PhoneLookup.CUSTOM_RINGTONE);
-                if ((columnIndex != -1) && (cursor.getString(columnIndex) != null)) {
-                    info.contactRingtoneUri = Uri.parse(cursor.getString(columnIndex));
-                } else {
-                    info.contactRingtoneUri = null;
-                }
+                            // cache the lookup key for later use with person_id to create lookup URIs
+                            columnIndex = cursor.getColumnIndex(PhoneLookup.LOOKUP_KEY);
+                            if (columnIndex != -1) {
+                                info.lookupKeyOrNull = cursor.getString(columnIndex);
+                            }
+                        }
+                    } else {
+                        // No valid columnIndex, so we can't look up person_id.
+                        Log.v(TAG, "Couldn't find contactId column for " + contactRef);
+                        // Watch out: this means that anything that depends on
+                        // person_id will be broken (like contact photo lookups in
+                        // the in-call UI, for example.)
+                    }
 
-                // look for the send to voicemail flag, set it to true only
-                // under certain circumstances.
-                columnIndex = cursor.getColumnIndex(PhoneLookup.SEND_TO_VOICEMAIL);
-                info.shouldSendToVoicemail = (columnIndex != -1) &&
-                        ((cursor.getInt(columnIndex)) == 1);
-                info.contactExists = true;
+                    // Display photo URI.
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.PHOTO_URI);
+                    if ((columnIndex != -1) && (cursor.getString(columnIndex) != null)) {
+                        info.contactDisplayPhotoUri = Uri.parse(cursor.getString(columnIndex));
+                    } else {
+                        info.contactDisplayPhotoUri = null;
+                    }
+
+                    // look for the custom ringtone, create from the string stored
+                    // in the database.
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.CUSTOM_RINGTONE);
+                    if ((columnIndex != -1) && (cursor.getString(columnIndex) != null)) {
+                        info.contactRingtoneUri = Uri.parse(cursor.getString(columnIndex));
+                    } else {
+                        info.contactRingtoneUri = null;
+                    }
+
+                    // look for the send to voicemail flag, set it to true only
+                    // under certain circumstances.
+                    columnIndex = cursor.getColumnIndex(PhoneLookup.SEND_TO_VOICEMAIL);
+                    info.shouldSendToVoicemail = (columnIndex != -1) &&
+                            ((cursor.getInt(columnIndex)) == 1);
+                    info.contactExists = true;
+                }
+            } finally {
+                IoUtils.closeQuietly(cursor);
             }
-            cursor.close();
         }
 
         info.needUpdate = false;
