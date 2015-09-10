@@ -283,10 +283,10 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi> i
         final boolean isModifyRequest = isPendingModifyRequest(mPrimary) ||
                 isPendingModifyRequest(mSecondary);
 
-        final boolean enableEndCallButton = Call.State.isConnectingOrConnected(callState) &&
+        final boolean enableEndCallButton = (Call.State.isConnectingOrConnected(callState)
+                || callState == Call.State.DISCONNECTING) &&
                 callState != Call.State.INCOMING && mPrimary != null && !isModifyRequest;
-        /* Hide the end call button instantly if we're receiving an incoming call
-           or when receiving a modify request */
+        // Hide the end call button instantly if we're receiving an incoming call.
         getUi().setEndCallButtonEnabled(
                 enableEndCallButton, callState != Call.State.INCOMING &&
                 !isModifyRequest /* animate */);
