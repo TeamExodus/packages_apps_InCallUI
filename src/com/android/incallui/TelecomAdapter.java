@@ -27,8 +27,7 @@ import com.google.common.base.Preconditions;
 import java.util.List;
 
 final class TelecomAdapter implements InCallServiceListener {
-    public static final String ADD_CALL_MODE_KEY = "add_call_mode";
-    public static final String ADD_PARTICIPANT_KEY = "add_participant";
+    private static final String ADD_CALL_MODE_KEY = "add_call_mode";
 
     private static TelecomAdapter sInstance;
     private InCallService mInCallService;

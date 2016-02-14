@@ -81,9 +81,6 @@
     <!-- Message indicating video calls not allowed if user enabled TTY Mode -->
     <string name="video_call_not_allowed_if_tty_enabled">Please disable TTY Mode to upgrade to video calls.</string>
 
-    <!-- Text for the onscreen "Add Participant" button -->
-    <string name="onscreenAddParticipant">Add Participant</string>
-
     <!-- Description of the deflect target in the Slide unlock screen. [CHAR LIMIT=NONE] -->
     <string name="qti_description_target_deflect">Deflect</string>
     <string name="qti_description_deflect_error">Number not set. Provide the number via IMS settings and retry.</string>
