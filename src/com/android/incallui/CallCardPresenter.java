@@ -17,6 +17,8 @@
 package com.android.incallui;
 
 import android.Manifest;
+import android.app.Activity;
+import android.app.FragmentManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -44,12 +46,10 @@ import com.android.incallui.InCallPresenter.InCallState;
 import com.android.incallui.InCallPresenter.InCallStateListener;
 import com.android.incallui.InCallPresenter.IncomingCallListener;
 import com.android.incalluibind.ObjectFactory;
-import com.android.phone.common.util.VolteUtils;
 
-import com.cyanogen.lookup.phonenumber.response.StatusCode;
-import com.google.common.base.Preconditions;
 import java.lang.ref.WeakReference;
 
+import com.google.common.base.Preconditions;
 
 /**
  * Presenter for the Call Card Fragment.
@@ -208,23 +208,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         } else if (newState == InCallState.INCALL) {
             primary = getCallToDisplay(callList, null, false);
             secondary = getCallToDisplay(callList, primary, true);
-            // During swap scenarios, two calls can be ACTIVE at the same time momentarily.
-            // In such cases secondary above will be null. To avoid flickering of secondary
-            // call view, assign the non primary call as secondary here.
-            if (secondary == null && primary != null) {
-                Call probableSecondary = null;
-                if (primary == mPrimary) {
-                    probableSecondary = mSecondary;
-                } else if (primary == mSecondary) {
-                    probableSecondary = mPrimary;
-                }
-                if (probableSecondary != null &&
-                        probableSecondary.getState() == Call.State.ACTIVE &&
-                        primary.getSubId() == probableSecondary.getSubId()) {
-                    Log.v(this, "Two calls ACTIVE");
-                    secondary = probableSecondary;
-                }
-            }
         }
 
         Log.d(this, "Primary call: " + primary);
@@ -232,7 +215,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
 
         final boolean primaryChanged = !(Call.areSame(mPrimary, primary) &&
                 Call.areSameNumber(mPrimary, primary));
-        final boolean primaryForwardedChanged = isForwarded(mPrimary) != isForwarded(primary);
         final boolean secondaryChanged = !(Call.areSame(mSecondary, secondary) &&
                 Call.areSameNumber(mSecondary, secondary));
         final boolean shouldShowCallSubject = shouldShowCallSubject(mPrimary);
@@ -265,8 +247,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
             updatePrimaryDisplayInfo();
             maybeStartSearch(mPrimary, true);
             mPrimary.setSessionModificationState(Call.SessionModificationState.NO_REQUEST);
-        } else if (primaryForwardedChanged && mPrimary != null) {
-            updatePrimaryDisplayInfo();
         }
 
         if (previousPrimary != null && mPrimary == null) {
@@ -317,10 +297,8 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
                     null,
                     null,
                     false /* isWifi */,
-                    false /* isConference */,
-                    false /* isWaitingForRemoteSide */);
+                    false /* isConference */);
             getUi().showHdAudioIndicator(false);
-            getUi().setVolteCallLabel(false);
         }
 
         maybeShowManageConferenceCallButton();
@@ -420,11 +398,9 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
                     getCallStateIcon(),
                     getGatewayNumber(),
                     mPrimary.hasProperty(Details.PROPERTY_WIFI),
-                    mPrimary.isConferenceCall(),
-                    mPrimary.isWaitingForRemoteSide());
+                    mPrimary.isConferenceCall());
 
             maybeShowHdAudioIcon();
-            maybeShowVolteLabel();
             setCallbackNumber();
         }
     }
@@ -438,16 +414,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
                 isPrimaryCallActive() && mPrimary.hasProperty(Details.PROPERTY_HIGH_DEF_AUDIO) &&
                 TextUtils.isEmpty(mPrimary.getLastForwardedNumber());
         getUi().showHdAudioIndicator(showHdAudioIndicator);
-    }
-
-    /**
-     * Show VoLTE label if call is active and made over VoLTE
-     */
-    private void maybeShowVolteLabel() {
-        int subId = getSubscriptionId();
-        boolean showVolte = isPrimaryCallActive() && (subId  > 0) &&
-                            VolteUtils.isVolteInUse(mContext, subId);
-        getUi().setVolteCallLabel(showVolte);
     }
 
     /**
@@ -602,10 +568,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         }
     }
 
-    private static boolean isForwarded(Call call) {
-        return call != null && call.isForwarded();
-    }
-
     private void updateContactEntry(ContactCacheEntry entry, boolean isPrimary) {
         if (isPrimary) {
             mPrimaryContactInfo = entry;
@@ -657,20 +619,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         return retval;
     }
 
-    private int getSubscriptionId() {
-        PhoneAccountHandle accountHandle = mPrimary.getAccountHandle();
-        if (accountHandle != null) {
-            try{
-                return Integer.parseInt(accountHandle.getId());
-            } catch (NumberFormatException ex) {
-                // handle id is not an int, device might not have sim in it
-                Log.w(TAG, "Unable to parse phone account handle " + accountHandle.getId() + " as" +
-                        " an int");
-            }
-        }
-        return 0;
-    }
-
     private void updatePrimaryDisplayInfo() {
         final CallCardUi ui = getUi();
         if (ui == null) {
@@ -682,8 +630,7 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
 
         if (mPrimary == null) {
             // Clear the primary display info.
-            ui.setPrimary(null, null, false, null, null, false, false, false, null, null, false,
-                    StatusCode.NULL, false, 0);
+            ui.setPrimary(null, null, false, null, null, false, false);
             return;
         }
 
@@ -702,15 +649,7 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
                     null /* label */,
                     getConferencePhoto(mPrimary),
                     false /* isSipCall */,
-                    false /* isForwarded */,
-                    showContactPhoto,
-                    null,
-                    null,
-                    false,
-                    StatusCode.NULL,
-                    false,
-                    0);
-
+                    showContactPhoto);
         } else if (mPrimaryContactInfo != null) {
             Log.d(TAG, "Update primary display info for " + mPrimaryContactInfo);
 
@@ -742,7 +681,6 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
             maybeShowHdAudioIcon();
 
             boolean nameIsNumber = name != null && name.equals(mPrimaryContactInfo.number);
-            final boolean isForwarded = isForwarded(mPrimary);
             ui.setPrimary(
                     number,
                     name,
@@ -750,18 +688,10 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
                     isChildNumberShown || isCallSubjectShown ? null : mPrimaryContactInfo.label,
                     mPrimaryContactInfo.photo,
                     mPrimaryContactInfo.isSipCall,
-                    isForwarded,
-                    showContactPhoto,
-                    mPrimaryContactInfo.lookupProviderName,
-                    mPrimaryContactInfo.lookupProviderBadge,
-                    mPrimaryContactInfo.isLookupInProgress,
-                    mPrimaryContactInfo.lookupStatus,
-                    mPrimaryContactInfo.isSpam,
-                    mPrimaryContactInfo.spamCount);
+                    showContactPhoto);
         } else {
             // Clear the primary display info.
-            ui.setPrimary(null, null, false, null, null, false, false, false, null, null, false,
-                    StatusCode.NULL, false, 0);
+            ui.setPrimary(null, null, false, null, null, false, false);
         }
 
         if (mEmergencyCallListener != null) {
@@ -1062,9 +992,7 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         void setVisible(boolean on);
         void setCallCardVisible(boolean visible);
         void setPrimary(String number, String name, boolean nameIsNumber, String label,
-                Drawable photo, boolean isSipCall, boolean isForwarded, boolean isContactPhotoShown,
-                String providerName, Drawable providerLogo, boolean isLookupInProgress,
-                StatusCode lookupStatus, boolean showSpamInfo, int spamCount);
+                Drawable photo, boolean isSipCall, boolean isContactPhotoShown);
         void setSecondary(boolean show, String name, boolean nameIsNumber, String label,
                 String providerLabel, boolean isConference, boolean isVideoCall,
                 boolean isFullscreen);
@@ -1072,7 +1000,7 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         void setCallState(int state, int videoState, int sessionModificationState,
                 DisconnectCause disconnectCause, String connectionLabel,
                 Drawable connectionIcon, String gatewayNumber, boolean isWifi,
-                boolean isConference, boolean isWaitingForRemoteSide);
+                boolean isConference);
         void setPrimaryCallElapsedTime(boolean show, long duration);
         void setPrimaryName(String name, boolean nameIsNumber);
         void setPrimaryImage(Drawable image, boolean isVisible);
@@ -1090,6 +1018,5 @@ public class CallCardPresenter extends Presenter<CallCardPresenter.CallCardUi>
         void animateForNewOutgoingCall();
         void sendAccessibilityAnnouncement();
         void showNoteSentToast();
-        void setVolteCallLabel(boolean show);
     }
 }

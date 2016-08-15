@@ -371,10 +371,9 @@ public class VideoCallFragment extends BaseFragment<VideoCallPresenter,
             mWidth = width;
             mHeight = height;
 
-            if (width != DIMENSIONS_NOT_SET && height != DIMENSIONS_NOT_SET
-                    && mSavedSurfaceTexture != null) {
+            if (mSavedSurfaceTexture != null) {
                 Log.d(this, "setSurfaceDimensions, mSavedSurfaceTexture is NOT equal to null.");
-                mSavedSurfaceTexture.setDefaultBufferSize(width, height);
+                createSurface(width, height);
             }
         }
 
@@ -434,11 +433,12 @@ public class VideoCallFragment extends BaseFragment<VideoCallPresenter,
      */
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
+        super.onActivityCreated(savedInstanceState);
+
         mIsLandscape = getResources().getBoolean(R.bool.is_layout_landscape);
+
         Log.d(this, "onActivityCreated: IsLandscape=" + mIsLandscape);
         getPresenter().init(getActivity());
-
-        super.onActivityCreated(savedInstanceState);
     }
 
     @Override
@@ -713,8 +713,14 @@ public class VideoCallFragment extends BaseFragment<VideoCallPresenter,
     @Override
     public void setPreviewRotation(int orientation) {
         Log.d(this, "setPreviewRotation: orientation=" + orientation);
-        if (mPreviewVideoContainer != null) {
-            mPreviewVideoContainer.setRotation(orientation);
+        if (sPreviewSurface != null) {
+            TextureView preview = sPreviewSurface.getTextureView();
+
+            if (preview == null ) {
+                return;
+            }
+
+            preview.setRotation(orientation);
         }
     }
 
@@ -811,11 +817,7 @@ public class VideoCallFragment extends BaseFragment<VideoCallPresenter,
 
             Log.d(this, "inflateVideoCallViews: sVideoSurfacesInUse=" + sVideoSurfacesInUse);
             //If peer adjusted screen size is not available, set screen size to default display size
-            Point screenSize = getScreenSize();
-            if (sDisplaySize != null) {
-                screenSize = VideoCallPresenter.resizeForAspectRatio(screenSize,
-                        sDisplaySize.x, sDisplaySize.y);
-            }
+            Point screenSize = sDisplaySize == null ? getScreenSize() : sDisplaySize;
             setSurfaceSizeAndTranslation(displaySurface, screenSize);
 
             if (!sVideoSurfacesInUse) {

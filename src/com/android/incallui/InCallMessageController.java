@@ -143,9 +143,9 @@ public class InCallMessageController implements InCallSubstateListener, VideoEve
         }
 
         if (!callSubstateChangedText.isEmpty()) {
-            String callSubstateLabelText = mContext.getResources().getString(
-                    R.string.call_substate_label, call.getId(), callSubstateChangedText);
-            QtiCallUtils.displayToast(mContext, callSubstateLabelText);
+            String callSubstateLabelText = call.getId() + mContext.getResources().getString(
+                    R.string.call_substate_label);
+            QtiCallUtils.displayToast(mContext, callSubstateLabelText + callSubstateChangedText);
         }
     }
 
@@ -164,8 +164,9 @@ public class InCallMessageController implements InCallSubstateListener, VideoEve
         }
 
         final Resources resources = mContext.getResources();
-        final String videoQualityChangedText = resources.getString(R.string.video_quality_changed,
-                call.getId(), QtiCallUtils.getVideoQualityResourceId(videoQuality));
+        final String videoQualityChangedText = call.getId() +
+            resources.getString(R.string.video_quality_changed) +
+            resources.getString(QtiCallUtils.getVideoQualityResourceId(videoQuality));
         QtiCallUtils.displayToast(mContext, videoQualityChangedText);
     }
 
@@ -192,7 +193,7 @@ public class InCallMessageController implements InCallSubstateListener, VideoEve
     public void onCallDataUsageChange(final long dataUsage) {
         Log.d(this, "onCallDataUsageChange: dataUsage = " + dataUsage);
         final String dataUsageChangedText = mContext.getResources().getString(
-                R.string.data_usage_label, dataUsage);
+                R.string.data_usage_label) + dataUsage;
         QtiCallUtils.displayToast(mContext, dataUsageChangedText);
     }
 

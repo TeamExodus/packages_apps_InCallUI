@@ -191,13 +191,13 @@ public class InCallCsRedialHandler implements CallList.Listener {
 
         mAlert = new AlertDialog.Builder(inCallActivity).setTitle(R.string.cs_redial_option)
                 .setMessage(R.string.cs_redial_msg)
-                .setPositiveButton(android.R.string.yes, new OnClickListener() {
+                .setPositiveButton(R.string.cs_redial_yes, new OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         dialCsCall(dialString);
                     }
                 })
-                .setNegativeButton(android.R.string.no, new OnClickListener() {
+                .setNegativeButton(R.string.cs_redial_no, new OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         //No implementation. Added for completeness

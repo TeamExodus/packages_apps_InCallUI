@@ -14,19 +14,11 @@
      limitations under the License.
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="oval">
-            <solid android:color="@color/incoming_call_decline_circle" />
-            <size
-                android:width="@dimen/incoming_call_widget_circle_size"
-                android:height="@dimen/incoming_call_widget_circle_size" />
-        </shape>
-    </item>
+    <item android:drawable="@drawable/fab_red" />
     <item>
         <bitmap
             android:gravity="center"
-            android:src="@drawable/ic_call_end_white_24dp"
-            android:tint="@color/incoming_call_widget_bitmap"
-            android:autoMirrored="true" />
+            android:src="@drawable/fab_ic_end_call"
+            android:tint="@color/glowpad_widget_active_color" />
     </item>
 </layer-list>

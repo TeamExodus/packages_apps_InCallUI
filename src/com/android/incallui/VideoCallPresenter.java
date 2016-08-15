@@ -247,10 +247,6 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
         InCallUiStateNotifier.getInstance().addListener(this);
         mCurrentVideoState = VideoProfile.STATE_AUDIO_ONLY;
         mCurrentCallState = Call.State.INVALID;
-
-        final InCallPresenter.InCallState inCallState =
-             InCallPresenter.getInstance().getInCallState();
-        onStateChange(inCallState, inCallState, CallList.getInstance());
     }
 
     /**
@@ -629,12 +625,8 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
     }
 
     private void checkForOrientationAllowedChange(Call call) {
-        final int currMode = OrientationModeHandler.getInstance().getCurrentOrientationMode();
-        final int newMode = OrientationModeHandler.getInstance().getOrientation(call);
-
-        if (newMode != currMode) {
-            InCallPresenter.getInstance().setInCallAllowsOrientationChange(newMode);
-        }
+        InCallPresenter.getInstance().setInCallAllowsOrientationChange(
+                OrientationModeHandler.getInstance().getOrientation(call));
     }
 
     /**
@@ -979,14 +971,8 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
             return;
         }
 
-        changePreviewDimensions(width, height);
-
-        if (mPreviewSurfaceState == PreviewSurfaceState.NONE) {
-            Log.w(this, "Received camera capabilities when camera is closed");
-            return;
-        }
-
         mPreviewSurfaceState = PreviewSurfaceState.CAPABILITIES_RECEIVED;
+        changePreviewDimensions(width, height);
 
         // Check if the preview surface is ready yet; if it is, set it on the {@code VideoCall}.
         // If it not yet ready, it will be set when when creation completes.
@@ -1153,15 +1139,18 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
             return;
         }
 
-        final int adjustedDimension = (int) (mMinimumVideoDimension * aspectRatio);
-        final int min = (int) Math.min(mMinimumVideoDimension, adjustedDimension);
-        final int max = (int) Math.max(mMinimumVideoDimension, adjustedDimension);
+        int height;
+        int width;
 
-        // When orientation is dynamic (CVO), we dynamically rotate the camera preview, hence
-        // here we make sure that the height of the preview is always greater than the width.
-        int height = max;
-        int width = min;
-
+        if (orientation == InCallOrientationEventListener.SCREEN_ORIENTATION_90 ||
+                orientation == InCallOrientationEventListener.SCREEN_ORIENTATION_270) {
+            width = (int) (mMinimumVideoDimension * aspectRatio);
+            height = (int) mMinimumVideoDimension;
+        } else {
+            // Portrait or reverse portrait orientation.
+            width = (int) mMinimumVideoDimension;
+            height = (int) (mMinimumVideoDimension * aspectRatio);
+        }
         ui.setPreviewSize(width, height);
     }
 
@@ -1182,12 +1171,6 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
         Point size = ui.getScreenSize();
         Log.d("VideoCallPresenter", "setDisplayVideoSize: windowmgr width=" + size.x
                 + " windowmgr height=" + size.y);
-        size = resizeForAspectRatio(size, width, height);
-        ui.setDisplayVideoSize(size.x, size.y);
-    }
-
-    public static Point resizeForAspectRatio(Point inSize, int width, int height) {
-        Point size = new Point(inSize);
         if (size.y * width > size.x * height) {
             // current display height is too much. Correct it
             size.y = (int) (size.x * height / width);
@@ -1195,7 +1178,7 @@ public class VideoCallPresenter extends Presenter<VideoCallPresenter.VideoCallUi
             // current display width is too much. Correct it
             size.x = (int) (size.y * width / height);
         }
-        return size;
+        ui.setDisplayVideoSize(size.x, size.y);
     }
 
     /**
