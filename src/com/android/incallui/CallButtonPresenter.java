@@ -18,7 +18,11 @@ package com.android.incallui;
 
 import static com.android.incallui.CallButtonFragment.Buttons.*;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.telecom.CallAudioState;
 import android.telecom.InCallService.VideoCall;
@@ -35,6 +39,7 @@ import com.android.incallui.InCallPresenter.IncomingCallListener;
 import com.android.incallui.InCallPresenter.InCallDetailsListener;
 
 import java.util.Objects;
+import org.codeaurora.QtiVideoCallConstants;
 
 /**
  * Logic for call buttons.
@@ -45,6 +50,7 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
 
     private static final String KEY_AUTOMATICALLY_MUTED = "incall_key_automatically_muted";
     private static final String KEY_PREVIOUS_MUTE_STATE = "incall_key_previous_mute_state";
+    private static final String RECORDING_WARNING_PRESENTED = "recording_warning_presented";
 
     private Call mCall;
     private boolean mAutomaticallyMuted = false;
@@ -226,6 +232,15 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         }
     }
 
+    public void transferCallClicked() {
+        if (mCall == null) {
+            return;
+        }
+
+        Log.i(this, "transferring call : " + mCall);
+        TelecomAdapter.getInstance().transferCall(mCall.getId());
+    }
+
     public void swapClicked() {
         if (mCall == null) {
             return;
@@ -339,6 +354,63 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         getUi().setVideoPaused(pause);
     }
 
+    public void callRecordClicked(boolean startRecording) {
+        CallRecorder recorder = CallRecorder.getInstance();
+        if (startRecording) {
+            Context context = getUi().getContext();
+            final SharedPreferences prefs = getPrefs(context);
+            boolean warningPresented = prefs.getBoolean(RECORDING_WARNING_PRESENTED, false);
+            if (!warningPresented) {
+                new AlertDialog.Builder(context)
+                        .setTitle(R.string.recording_warning_title)
+                        .setMessage(R.string.recording_warning_text)
+                        .setPositiveButton(R.string.onscreenCallRecordText,
+                                new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                prefs.edit()
+                                        .putBoolean(RECORDING_WARNING_PRESENTED, true)
+                                        .apply();
+                                startCallRecordingOrAskForPermission();
+                            }
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show();
+            } else {
+                startCallRecordingOrAskForPermission();
+            }
+        } else {
+            if (recorder.isRecording()) {
+                recorder.finishRecording();
+            }
+            getUi().setCallRecordingState(recorder.isRecording());
+        }
+    }
+
+    public void startCallRecording() {
+        CallRecorder recorder = CallRecorder.getInstance();
+        recorder.startRecording(mCall.getNumber(), mCall.getCreateTimeMillis());
+        getUi().setCallRecordingState(recorder.isRecording());
+    }
+
+    private void startCallRecordingOrAskForPermission() {
+        if (hasAllPermissions(CallRecorder.REQUIRED_PERMISSIONS)) {
+            startCallRecording();
+        } else {
+            getUi().requestCallRecordingPermission(CallRecorder.REQUIRED_PERMISSIONS);
+        }
+    }
+
+    private boolean hasAllPermissions(String[] permissions) {
+        Context context = getUi().getContext();
+        for (String p : permissions) {
+            if (context.checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void updateUi(InCallState state, Call call) {
         Log.d(this, "Updating call UI for call: ", call);
 
@@ -391,6 +463,14 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
                 (callState == Call.State.ACTIVE || callState == Call.State.ONHOLD);
 
         final boolean showMute = call.can(android.telecom.Call.Details.CAPABILITY_MUTE);
+        final boolean showAddParticipant = call.can(
+                QtiVideoCallConstants.CAPABILITY_ADD_PARTICIPANT);
+
+        final CallRecorder recorder = CallRecorder.getInstance();
+        boolean showCallRecordOption = recorder.isEnabled()
+                && !isVideo && call.getState() == Call.State.ACTIVE;
+        final boolean showTransferCall = call.can(
+                android.telecom.Call.Details.CAPABILITY_SUPPORTS_TRANSFER);
 
         ui.showButton(BUTTON_AUDIO, true);
         ui.showButton(BUTTON_SWAP, showSwap);
@@ -403,6 +483,9 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         ui.showButton(BUTTON_PAUSE_VIDEO, isVideo && !useExt);
         ui.showButton(BUTTON_DIALPAD, !isVideo || useExt);
         ui.showButton(BUTTON_MERGE, showMerge);
+        ui.showButton(BUTTON_RECORD_CALL, showCallRecordOption);
+        ui.showButton(BUTTON_TRANSFER_CALL, showTransferCall);
+        ui.enableAddParticipant(showAddParticipant);
 
         ui.updateButtonStates();
     }
@@ -443,8 +526,11 @@ public class CallButtonPresenter extends Presenter<CallButtonPresenter.CallButto
         void setHold(boolean on);
         void setCameraSwitched(boolean isBackFacingCamera);
         void setVideoPaused(boolean isPaused);
+        void enableAddParticipant(boolean show);
         void setAudio(int mode);
         void setSupportedAudio(int mask);
+        void setCallRecordingState(boolean isRecording);
+        void requestCallRecordingPermission(String[] permissions);
         void displayDialpad(boolean on, boolean animate);
         boolean isDialpadVisible();
 

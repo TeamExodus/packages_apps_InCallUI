@@ -17,7 +17,6 @@
 package com.android.incallui;
 
 import android.app.ActionBar;
-import android.app.FragmentTransaction;
 import android.app.ActionBar.Tab;
 import android.app.Activity;
 import android.app.ActivityManager;
@@ -26,6 +25,8 @@ import android.app.DialogFragment;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.app.FragmentTransaction;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
@@ -61,6 +62,8 @@ import com.android.contacts.common.widget.SelectPhoneAccountDialogFragment;
 import com.android.contacts.common.widget.SelectPhoneAccountDialogFragment.SelectPhoneAccountListener;
 import com.android.incallui.Call.State;
 
+import com.cyngn.uicommon.view.Snackbar;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -71,6 +74,7 @@ import java.util.Locale;
 public class InCallActivity extends Activity implements FragmentDisplayManager {
 
     public static final String TAG = InCallActivity.class.getSimpleName();
+    public static final boolean DEBUG = false;
 
     public static final String SHOW_DIALPAD_EXTRA = "InCallActivity.show_dialpad";
     public static final String DIALPAD_TEXT_EXTRA = "InCallActivity.dialpad_text";
@@ -86,7 +90,10 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
     private static final int DIALPAD_REQUEST_SHOW = 2;
     private static final int DIALPAD_REQUEST_HIDE = 3;
 
+    private static final int SNACKBAR_TIMEOUT = 10000; // 10 seconds auto dismiss
+
     private CallButtonFragment mCallButtonFragment;
+    private ModButtonFragment mModButtonFragment;
     private CallCardFragment mCallCardFragment;
     private AnswerFragment mAnswerFragment;
     private DialpadFragment mDialpadFragment;
@@ -96,6 +103,7 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
     private boolean mIsVisible;
     private AlertDialog mDialog;
     private InCallOrientationEventListener mInCallOrientationEventListener;
+    private Snackbar mInviteSnackbar;
 
     /**
      * Used to indicate whether the dialpad should be hidden or shown {@link #onResume}.
@@ -120,6 +128,9 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
     private Animation mSlideIn;
     private Animation mSlideOut;
     private boolean mDismissKeyguard = false;
+
+    /** Flag indicating if we are exiting fast because service is not bound. */
+    private boolean mExitFast = false;
 
     private final int TAB_COUNT_ONE = 1;
     private final int TAB_COUNT_TWO = 2;
@@ -154,6 +165,13 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
 
         super.onCreate(icicle);
 
+        if (InCallServiceImpl.mTelephonyManager == null) {
+            // Service is not bound. We shouldn't be here. Exit.
+            mExitFast = true;
+            finish();
+            return;
+        }
+
         // set this flag so this activity will stay in front of the keyguard
         // Have the WindowManager filter out touch events that are "too fat".
         int flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
@@ -178,6 +196,10 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
 
         // TODO(klp): Do we need to add this back when prox sensor is not available?
         // lp.inputFeatures |= WindowManager.LayoutParams.INPUT_FEATURE_DISABLE_USER_ACTIVITY;
+
+        // Since activity is created newly, clear full screen flag. This will ensure that
+        // the flag is in sync with actual UI when UI is recreated due to orientation change.
+        InCallPresenter.getInstance().clearFullscreen();
 
         setContentView(R.layout.incall_screen);
 
@@ -220,7 +242,7 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
             if (icicle.containsKey(SHOW_DIALPAD_EXTRA)) {
                 boolean showDialpad = icicle.getBoolean(SHOW_DIALPAD_EXTRA);
                 mShowDialpadRequest = showDialpad ? DIALPAD_REQUEST_SHOW : DIALPAD_REQUEST_HIDE;
-                mAnimateDialpadOnShow = false;
+                mAnimateDialpadOnShow = showDialpad;
             }
             mDtmfText = icicle.getString(DIALPAD_TEXT_EXTRA);
 
@@ -310,6 +332,11 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
     @Override
     protected void onPause() {
         Log.d(this, "onPause()...");
+
+        if (mInviteSnackbar != null) {
+            mInviteSnackbar.dismiss();
+        }
+
         if (mDialpadFragment != null ) {
             mDialpadFragment.onDialerKeyUp(null);
         }
@@ -334,8 +361,10 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
     @Override
     protected void onDestroy() {
         Log.d(this, "onDestroy()...  this = " + this);
-        InCallPresenter.getInstance().unsetActivity(this);
-        InCallPresenter.getInstance().updateIsChangingConfigurations();
+        if (!mExitFast) {
+            InCallPresenter.getInstance().unsetActivity(this);
+            InCallPresenter.getInstance().updateIsChangingConfigurations();
+        }
         super.onDestroy();
     }
 
@@ -359,6 +388,8 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
             mConferenceManagerFragment = (ConferenceManagerFragment) fragment;
         } else if (fragment instanceof CallButtonFragment) {
             mCallButtonFragment = (CallButtonFragment) fragment;
+        } else if (fragment instanceof ModButtonFragment) {
+            mModButtonFragment = (ModButtonFragment) fragment;
         }
     }
 
@@ -743,6 +774,9 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
         if ((show && isDialpadVisible()) || (!show && !isDialpadVisible())) {
             return;
         }
+        if (mInviteSnackbar != null) {
+            mInviteSnackbar.dismiss();
+        }
         // We don't do a FragmentTransaction on the hide case because it will be dealt with when
         // the listener is fired after an animation finishes.
         if (!animate) {
@@ -812,12 +846,22 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
         return super.dispatchPopulateAccessibilityEvent(event);
     }
 
-    public void maybeShowErrorDialogOnDisconnect(DisconnectCause disconnectCause) {
+    public void maybeShowErrorDialogOnDisconnect(Call call) {
         Log.d(this, "maybeShowErrorDialogOnDisconnect");
 
-        if (!isFinishing() && !TextUtils.isEmpty(disconnectCause.getDescription())
-                && (disconnectCause.getCode() == DisconnectCause.ERROR ||
-                        disconnectCause.getCode() == DisconnectCause.RESTRICTED)) {
+        if (isFinishing()) {
+            return;
+        }
+
+        DisconnectCause disconnectCause = call.getDisconnectCause();
+        int code = disconnectCause.getCode();
+
+        if (call.wasUnansweredForwarded()) {
+            showErrorDialog(getString(R.string.callUnanswered_forwarded));
+        } else if (call.missedBecauseIncomingCallsBarredRemotely()) {
+            showErrorDialog(getString(R.string.callFailed_incoming_cb_enabled));
+        } else if (!TextUtils.isEmpty(disconnectCause.getDescription())
+                && (code == DisconnectCause.ERROR || code == DisconnectCause.RESTRICTED)) {
             showErrorDialog(disconnectCause.getDescription());
         }
     }
@@ -1003,5 +1047,50 @@ public class InCallActivity extends Activity implements FragmentDisplayManager {
         } else {
             mInCallOrientationEventListener.disable();
         }
+    }
+
+    public void showInviteSnackbar(final PendingIntent inviteIntent, String inviteText) {
+        final View rootView = getCallCardFragment().getView();
+        if (rootView.getVisibility() != View.VISIBLE || TextUtils.isEmpty(inviteText)) {
+            return;
+        }
+        mInviteSnackbar = Snackbar.make(rootView, inviteText, SNACKBAR_TIMEOUT);
+        mInviteSnackbar.setCallback(new Snackbar.Callback() {
+            @Override
+            public void onDismissed(Snackbar snackbar, int event) {
+                if (DEBUG) {
+                    Log.d(TAG, "Snackbar.Callback.onDismissed");
+                }
+                if (mCallCardFragment != null) {
+                    mCallCardFragment.updateFabPosition();
+                }
+            }
+
+            @Override
+            public void onShown(Snackbar snackbar) {
+                if (DEBUG) {
+                    Log.d(TAG, "Snackbar.Callback.onShown");
+                }
+                if (mCallCardFragment != null) {
+                    mCallCardFragment.updateFabPosition(snackbar.getView().getHeight());
+                }
+            }
+        });
+        if (inviteIntent != null) {
+            mInviteSnackbar.setActionTextColor(getResources()
+                    .getColor(R.color.snackbar_action_text_color))
+                    .setAction(R.string.snackbar_invite_action_text, new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            try {
+                                inviteIntent.send();
+                            } catch (PendingIntent.CanceledException e) {
+                                Log.e(TAG, "Caught CanceledException from InCall Plugin invite" +
+                                        " intent", e);
+                            }
+                        }
+                    });
+        }
+        mInviteSnackbar.show();
     }
 }
